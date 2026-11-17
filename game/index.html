@@ -128,9 +128,12 @@
   <div id="hitmarker"><span class="a"></span><span class="b"></span><span class="c"></span><span class="d"></span></div>
   <div id="feed"></div>
   <div id="topBar">
+    <div class="panel"><div class="big" id="waveVal">1/3</div><div class="small">WAVE</div></div>
     <div class="panel"><div class="big" id="sentriesLeft">8</div><div class="small">SENTRIES LEFT</div></div>
     <div class="panel"><div class="big" id="timer">00:00</div><div class="small">MISSION TIME</div></div>
     <div class="panel"><div class="big" id="kills">0</div><div class="small">ELIMINATED</div></div>
+    <div class="panel"><div class="big" id="comboVal">—</div><div class="small">COMBO</div></div>
+    <div class="panel"><div class="big" id="scoreVal">0</div><div class="small">SCORE</div></div>
   </div>
   <div id="compass"><div id="compassStrip"></div><div id="compassNeedle"></div></div>
   <div id="objective">CLEAR THE OUTPOST — ELIMINATE ALL 8 SENTRIES</div>
@@ -157,10 +160,11 @@
     <p>A remote forest outpost, held by eight sentries under a sweeping spotlight.<br>Deploy from the treeline. Clear them all. Get out before dawn.</p>
     <div class="brief">
       <b>BRIEFING</b><br>
-      • Eliminate all <b>8 sentries</b> patrolling the outpost.<br>
-      • They patrol, listen for gunfire and shoot back when alerted.<br>
-      • Headshots deal double damage. Fallen sentries may drop ammo.<br>
-      • Two medkits are stashed in the outpost. Watch the watchtower light.
+      • Three waves — <b>3, then 3, then the Captain</b>. Clear a wave to call the next.<br>
+      • Chain kills within <b>4 seconds</b> to build a combo multiplier and raise your score.<br>
+      • The final sentry is <b>Captain Voss</b> — elite armour, fast reactions, glowing red visor.<br>
+      • A gold weapon crate is stashed mid-outpost: <b>extended magazine, 45 rounds</b>.<br>
+      • Headshots deal double damage. Fallen sentries may drop ammo. Two medkits are stashed.
     </div>
     <div class="controls">
       <span><b>W A S D</b> move</span><span><b>Mouse</b> look</span>
@@ -190,6 +194,8 @@
       <div><div class="v" id="statKills">0/8</div><div class="k">SENTRIES</div></div>
       <div><div class="v" id="statAcc">0%</div><div class="k">ACCURACY</div></div>
       <div><div class="v" id="statShots">0</div><div class="k">SHOTS FIRED</div></div>
+      <div><div class="v" id="statScore">0</div><div class="k">SCORE</div></div>
+      <div><div class="v" id="statCombo">x0</div><div class="k">BEST COMBO</div></div>
     </div>
     <button class="btn" id="restartBtn2">↻&nbsp; PLAY AGAIN</button>
   </div>
