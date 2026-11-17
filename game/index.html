@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Rainline Outpost</title>
+<style>
+  :root { --amber: #e8a33d; --red: #e5484d; --green: #7dc383; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #070b12;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif; color: #dfe7ef;
+    -webkit-user-select: none; user-select: none; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  .hidden { display: none !important; }
+  #vignette { position: fixed; inset: 0; pointer-events: none; z-index: 5;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.55) 100%); }
+  #damage { position: fixed; inset: 0; pointer-events: none; z-index: 6; opacity: 0;
+    background: radial-gradient(ellipse at center, transparent 45%, rgba(200,20,20,.55) 100%); }
+  #flash { position: fixed; inset: 0; pointer-events: none; z-index: 6; opacity: 0; background: #cfe4ff; }
+
+  /* ---------- HUD ---------- */
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+  #crosshair { position: absolute; left: 50%; top: 50%; width: 26px; height: 26px;
+    transform: translate(-50%,-50%); }
+  #crosshair .dot { position: absolute; left: 50%; top: 50%; width: 3px; height: 3px;
+    background: #fff; border-radius: 50%; transform: translate(-50%,-50%); box-shadow: 0 0 3px #000; }
+  #crosshair .arm { position: absolute; background: rgba(255,255,255,.9); box-shadow: 0 0 2px #000; }
+  #crosshair .t { left: 50%; top: 0; width: 2px; height: 8px; transform: translateX(-50%); }
+  #crosshair .b { left: 50%; bottom: 0; width: 2px; height: 8px; transform: translateX(-50%); }
+  #crosshair .l { left: 0; top: 50%; width: 8px; height: 2px; transform: translateY(-50%); }
+  #crosshair .r { right: 0; top: 50%; width: 8px; height: 2px; transform: translateY(-50%); }
+  #hitmarker { position: absolute; left: 50%; top: 50%; width: 30px; height: 30px;
+    transform: translate(-50%,-50%) rotate(45deg); opacity: 0; }
+  #hitmarker span { position: absolute; background: #fff; box-shadow: 0 0 4px #000; }
+  #hitmarker .a { left: 0; top: 50%; width: 10px; height: 2px; }
+  #hitmarker .b { right: 0; top: 50%; width: 10px; height: 2px; }
+  #hitmarker .c { top: 0; left: 50%; width: 2px; height: 10px; }
+  #hitmarker .d { bottom: 0; left: 50%; width: 2px; height: 10px; }
+  #hitmarker.headshot span { background: var(--red); }
+  .panel { background: rgba(5,10,18,.62); border: 1px solid rgba(255,255,255,.14);
+    border-radius: 8px; padding: 8px 12px; backdrop-filter: blur(2px); }
+  #healthBox { position: absolute; left: 16px; bottom: 16px; min-width: 210px; }
+  #healthBox .label { font-size: 11px; letter-spacing: 2px; color: #9fb2c8; }
+  #healthNum { font-size: 26px; font-weight: 700; line-height: 1; }
+  #healthBarWrap { height: 8px; background: rgba(255,255,255,.15); border-radius: 4px; margin-top: 5px; overflow: hidden; }
+  #healthBar { height: 100%; width: 100%; background: var(--green); border-radius: 4px; transition: width .2s; }
+  #ammoBox { position: absolute; right: 16px; bottom: 16px; text-align: right; }
+  #ammoBox .mag { font-size: 30px; font-weight: 700; line-height: 1; }
+  #ammoBox .res { font-size: 14px; color: #9fb2c8; }
+  #ammoBox .mode { font-size: 11px; letter-spacing: 2px; color: var(--amber); }
+  #topBar { position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 10px; align-items: stretch; }
+  #topBar .panel { text-align: center; }
+  #topBar .big { font-size: 20px; font-weight: 700; line-height: 1.05; }
+  #topBar .small { font-size: 10px; letter-spacing: 2px; color: #9fb2c8; }
+  #compass { position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+    margin-top: 62px; width: 340px; height: 26px; overflow: hidden;
+    background: linear-gradient(90deg, transparent, rgba(5,10,18,.7) 18%, rgba(5,10,18,.7) 82%, transparent);
+    border-radius: 6px; }
+  #compassStrip { position: absolute; top: 0; height: 100%; white-space: nowrap; font-size: 12px; color: #cfe0f2; }
+  #compassStrip b { color: var(--amber); }
+  #compassStrip .mk { color: var(--red); font-weight: 700; }
+  #compassNeedle { position: absolute; left: 50%; top: 0; width: 2px; height: 100%; background: var(--amber); transform: translateX(-50%); }
+  #objective { position: absolute; top: 108px; left: 50%; transform: translateX(-50%);
+    font-size: 13px; letter-spacing: 1px; color: #ffe1a8; text-shadow: 0 1px 4px #000; text-align: center; }
+  #feed { position: absolute; left: 16px; top: 16px; font-size: 13px; line-height: 1.7;
+    text-shadow: 0 1px 3px #000; }
+  #feed div { animation: feedin .25s ease-out; }
+  @keyframes feedin { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; } }
+  #banner { position: absolute; left: 50%; top: 34%; transform: translate(-50%,-50%);
+    text-align: center; text-shadow: 0 2px 10px #000; }
+  #banner .big { font-size: 44px; font-weight: 800; letter-spacing: 6px; color: #fff; }
+  #banner .sub { font-size: 16px; color: #cfe0f2; margin-top: 6px; }
+  #hint { position: absolute; bottom: 86px; left: 50%; transform: translateX(-50%);
+    font-size: 12px; color: #9fb2c8; text-shadow: 0 1px 3px #000; }
+
+  /* ---------- Screens ---------- */
+  .screen { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(ellipse at 50% 35%, rgba(10,22,38,.28), rgba(3,6,10,.6)); }
+  .card { max-width: 620px; width: calc(100% - 40px); text-align: center; padding: 34px 30px;
+    background: rgba(6,12,20,.72); border: 1px solid rgba(232,163,61,.35); border-radius: 14px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.6); }
+  .card h1 { margin: 0 0 4px; font-size: 46px; letter-spacing: 8px; color: #fff; }
+  .card h1 .gold { color: var(--amber); }
+  .card h2 { margin: 0 0 12px; font-size: 30px; letter-spacing: 4px; }
+  .card .tag { color: var(--amber); letter-spacing: 4px; font-size: 12px; margin-bottom: 10px; }
+  .card p { color: #b9c9db; font-size: 15px; line-height: 1.6; margin: 10px 0; }
+  .card .brief { text-align: left; background: rgba(255,255,255,.05); border-radius: 8px; padding: 12px 16px; font-size: 14px; }
+  .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 18px; text-align: left;
+    font-size: 13px; color: #b9c9db; margin: 14px auto 4px; max-width: 440px; }
+  .controls b { color: #fff; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.2);
+    border-radius: 4px; padding: 1px 7px; font-family: inherit; }
+  .btn { pointer-events: auto; cursor: pointer; display: inline-block; margin-top: 18px;
+    background: var(--amber); color: #14100a; font-weight: 800; letter-spacing: 3px; font-size: 16px;
+    border: none; border-radius: 8px; padding: 14px 42px; }
+  .btn:hover { filter: brightness(1.12); }
+  .btn.ghost { background: transparent; color: #dfe7ef; border: 1px solid rgba(255,255,255,.35); }
+  .stats { display: flex; justify-content: center; gap: 26px; margin: 16px 0 4px; flex-wrap: wrap; }
+  .stats div { text-align: center; }
+  .stats .v { font-size: 28px; font-weight: 800; color: #fff; }
+  .stats .k { font-size: 11px; letter-spacing: 2px; color: #9fb2c8; }
+  .win h2 { color: var(--green); } .lose h2 { color: var(--red); }
+
+  /* ---------- Touch ---------- */
+  #touch { position: fixed; inset: 0; z-index: 15; pointer-events: none; }
+  #stick { position: absolute; left: 26px; bottom: 90px; width: 120px; height: 120px;
+    border: 2px solid rgba(255,255,255,.35); border-radius: 50%; background: rgba(255,255,255,.06); pointer-events: auto; }
+  #stickKnob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; border-radius: 50%;
+    background: rgba(255,255,255,.35); transform: translate(-50%,-50%); }
+  .tbtn { position: absolute; pointer-events: auto; width: 64px; height: 64px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,.4); background: rgba(255,255,255,.1); color: #fff;
+    font-weight: 800; font-size: 13px; display: flex; align-items: center; justify-content: center; }
+  #btnFire { right: 26px; bottom: 96px; width: 84px; height: 84px; background: rgba(229,72,77,.35); }
+  #btnAds { right: 122px; bottom: 176px; }
+  #btnReload { right: 122px; bottom: 96px; }
+  #btnSprint { left: 160px; bottom: 96px; }
+  #muteBtn { position: fixed; right: 12px; top: 12px; z-index: 25; pointer-events: auto; cursor: pointer;
+    background: rgba(5,10,18,.6); color: #dfe7ef; border: 1px solid rgba(255,255,255,.2);
+    border-radius: 6px; padding: 6px 10px; font-size: 12px; }
+  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+</style>
+</head>
+<body>
+<canvas id="game" aria-label="Rainline Outpost: clear 8 sentries in a rainy forest outpost at night"></canvas>
+<div id="vignette"></div><div id="damage"></div><div id="flash"></div>
+
+<div id="hud" class="hidden">
+  <div id="crosshair"><span class="arm t"></span><span class="arm b"></span><span class="arm l"></span><span class="arm r"></span><span class="dot"></span></div>
+  <div id="hitmarker"><span class="a"></span><span class="b"></span><span class="c"></span><span class="d"></span></div>
+  <div id="feed"></div>
+  <div id="topBar">
+    <div class="panel"><div class="big" id="sentriesLeft">8</div><div class="small">SENTRIES LEFT</div></div>
+    <div class="panel"><div class="big" id="timer">00:00</div><div class="small">MISSION TIME</div></div>
+    <div class="panel"><div class="big" id="kills">0</div><div class="small">ELIMINATED</div></div>
+  </div>
+  <div id="compass"><div id="compassStrip"></div><div id="compassNeedle"></div></div>
+  <div id="objective">CLEAR THE OUTPOST — ELIMINATE ALL 8 SENTRIES</div>
+  <div id="healthBox" class="panel"><div class="label">INTEGRITY</div><div id="healthNum">100</div><div id="healthBarWrap"><div id="healthBar"></div></div></div>
+  <div id="ammoBox" class="panel"><div class="mag"><span id="magAmmo">30</span> <span class="res">/ <span id="resAmmo">120</span></span></div><div class="mode" id="fireMode">CARBINE · AUTO</div></div>
+  <div id="banner" class="hidden"><div class="big"></div><div class="sub"></div></div>
+  <div id="hint">WASD move · SHIFT sprint · R reload · Right-click aim · M mute</div>
+</div>
+
+<div id="touch" class="hidden">
+  <div id="stick"><div id="stickKnob"></div></div>
+  <div class="tbtn" id="btnFire">FIRE</div>
+  <div class="tbtn" id="btnAds">ADS</div>
+  <div class="tbtn" id="btnReload">RLD</div>
+  <div class="tbtn" id="btnSprint">RUN</div>
+</div>
+
+<button id="muteBtn">SOUND: ON</button>
+
+<div id="screen-start" class="screen">
+  <div class="card">
+    <div class="tag">NIGHT OPERATION · RAIN · 02:47</div>
+    <h1>RAINLINE <span class="gold">OUTPOST</span></h1>
+    <p>A remote forest outpost, held by eight sentries under a sweeping spotlight.<br>Deploy from the treeline. Clear them all. Get out before dawn.</p>
+    <div class="brief">
+      <b>BRIEFING</b><br>
+      • Eliminate all <b>8 sentries</b> patrolling the outpost.<br>
+      • They patrol, listen for gunfire and shoot back when alerted.<br>
+      • Headshots deal double damage. Fallen sentries may drop ammo.<br>
+      • Two medkits are stashed in the outpost. Watch the watchtower light.
+    </div>
+    <div class="controls">
+      <span><b>W A S D</b> move</span><span><b>Mouse</b> look</span>
+      <span><b>Click</b> fire</span><span><b>Right-click</b> aim down sights</span>
+      <span><b>R</b> reload</span><span><b>Shift</b> sprint</span>
+      <span><b>P / Esc</b> pause</span><span><b>M</b> mute</span>
+    </div>
+    <button class="btn" id="deployBtn">▶&nbsp; DEPLOY</button>
+  </div>
+</div>
+
+<div id="screen-pause" class="screen hidden">
+  <div class="card">
+    <h2>PAUSED</h2>
+    <p>The rain keeps falling. The sentries keep patrolling.</p>
+    <button class="btn" id="resumeBtn">RESUME</button>
+    <button class="btn ghost" id="restartBtn1">RESTART MISSION</button>
+  </div>
+</div>
+
+<div id="screen-end" class="screen hidden">
+  <div class="card" id="endCard">
+    <h2 id="endTitle">MISSION COMPLETE</h2>
+    <p id="endText"></p>
+    <div class="stats">
+      <div><div class="v" id="statTime">0:00</div><div class="k">TIME</div></div>
+      <div><div class="v" id="statKills">0/8</div><div class="k">SENTRIES</div></div>
+      <div><div class="v" id="statAcc">0%</div><div class="k">ACCURACY</div></div>
+      <div><div class="v" id="statShots">0</div><div class="k">SHOTS FIRED</div></div>
+    </div>
+    <button class="btn" id="restartBtn2">↻&nbsp; PLAY AGAIN</button>
+  </div>
+</div>
+
+<p id="status" role="status" aria-live="polite"></p>
+<script src="./vendor/three.min.js"></script>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
