@@ -15,7 +15,8 @@ export class Player {
     this.pitch = 0;
     this.hp = 100;
     this.maxHp = 100;
-    this.mag = MAG;
+    this.magSize = 30; // the upgrade crate raises this to 45
+    this.mag = this.magSize;
     this.reserve = 120;
     this.reloading = false;
     this.reloadTimer = 0;
@@ -110,7 +111,7 @@ export class Player {
       this.reloadTimer -= dt;
       if (this.reloadTimer <= 0) {
         this.reloading = false;
-        const need = MAG - this.mag;
+        const need = this.magSize - this.mag;
         const take = Math.min(need, this.reserve);
         this.mag += take; this.reserve -= take;
         this.onReloaded && this.onReloaded();
@@ -157,7 +158,7 @@ export class Player {
   }
 
   startReload() {
-    if (this.reloading || this.mag === MAG || this.reserve <= 0) return false;
+    if (this.reloading || this.mag === this.magSize || this.reserve <= 0) return false;
     this.reloading = true;
     this.reloadTimer = 1.15;
     return true;

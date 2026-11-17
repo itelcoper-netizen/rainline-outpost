@@ -24,6 +24,10 @@ export class Hud {
     this.hint = this.el('hint');
     this.bannerTimer = 0;
     this.hitTimer = 0;
+    this.comboVal = this.el('comboVal');
+    this.scoreVal = this.el('scoreVal');
+    this.waveVal = this.el('waveVal');
+    this.fireMode = this.el('fireMode');
   }
 
   showHud(v) { this.hud.classList.toggle('hidden', !v); }
@@ -45,9 +49,15 @@ export class Hud {
     this.sentriesLeft.textContent = state.left;
     this.kills.textContent = state.kills;
     this.timer.textContent = this.fmtTime(state.time);
-    this.objective.textContent = state.left > 0
-      ? `CLEAR THE OUTPOST — ${state.left} SENTR${state.left === 1 ? 'Y' : 'IES'} REMAIN`
-      : 'OUTPOST CLEAR';
+    this.comboVal.textContent = state.combo > 0 ? `x${state.combo}` : '—';
+    this.scoreVal.textContent = state.score;
+    this.waveVal.textContent = `${state.wave}/3`;
+    this.fireMode.textContent = state.upgraded ? 'CARBINE · AUTO · EXT MAG' : 'CARBINE · AUTO';
+    this.objective.textContent = state.captainAlive
+      ? '⚠ CAPTAIN VOSS IS HUNTING YOU'
+      : state.left > 0
+        ? `CLEAR THE OUTPOST — ${state.left} SENTR${state.left === 1 ? 'Y' : 'IES'} REMAIN`
+        : 'OUTPOST CLEAR';
     // Crosshair spread.
     const spread = 4 + state.spread * 900;
     this.crosshair.style.transform = `translate(-50%,-50%) scale(${1 + state.spread * 14})`;
@@ -119,12 +129,14 @@ export class Hud {
     card.classList.toggle('lose', !win);
     document.getElementById('endTitle').textContent = win ? 'MISSION COMPLETE' : 'MISSION FAILED';
     document.getElementById('endText').textContent = win
-      ? 'All eight sentries are down. The outpost is silent — only the rain keeps watch.'
+      ? `All eight sentries are down. The outpost is silent — only the rain keeps watch. Final score ${stats.score}.`
       : 'You were cut down in the rain. The outpost still stands. Try a different approach.';
     document.getElementById('statTime').textContent = this.fmtTime(stats.time);
     document.getElementById('statKills').textContent = `${stats.kills}/8`;
     document.getElementById('statAcc').textContent = `${stats.accuracy}%`;
     document.getElementById('statShots').textContent = stats.shots;
+    document.getElementById('statScore').textContent = stats.score;
+    document.getElementById('statCombo').textContent = `x${stats.bestCombo}`;
     this.setEndVisible(true);
   }
 }

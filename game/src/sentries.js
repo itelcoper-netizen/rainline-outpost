@@ -7,14 +7,17 @@ const BODY_DMG = 34;
 const HEAD_DMG = 68;
 
 export class Sentry {
-  constructor(scene, rng, id, waypoints) {
+  constructor(scene, rng, id, waypoints, opts = {}) {
     this.id = id;
+    this.elite = !!opts.elite;
+    this.name = this.elite ? 'CAPTAIN VOSS' : null;
+    this.active = true;
     this.rng = rng;
     this.waypoints = waypoints;
     this.wpIndex = Math.floor(rng.next() * waypoints.length);
     this.pos = new THREE.Vector3(waypoints[this.wpIndex].x, 0, waypoints[this.wpIndex].z);
     this.yaw = rng.angle();
-    this.hp = 100;
+    this.hp = this.elite ? 260 : 100;
     this.alive = true;
     this.state = 'patrol'; // patrol | suspicious | alert
     this.pauseTimer = rng.float(0, 1.5);
@@ -50,8 +53,9 @@ export class Sentry {
     head.position.y = 1.72; g.add(head);
     const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), dark);
     helmet.position.y = 1.76; g.add(helmet);
-    this.visor = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.05, 0.05),
-      new THREE.MeshBasicMaterial({ color: 0xff5533 }));
+    this.visorColor = this.elite ? 0xff2222 : 0xff5533;
+    this.visor = new THREE.Mesh(new THREE.BoxGeometry(this.elite ? 0.38 : 0.3, 0.05, 0.05),
+      new THREE.MeshBasicMaterial({ color: this.visorColor }));
     this.visor.position.set(0, 1.72, 0.2); g.add(this.visor);
     // Rifle.
     const rifle = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.09, 0.95), dark);
@@ -60,6 +64,18 @@ export class Sentry {
     for (const sx of [-0.3, 0.3]) {
       const arm = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.55, 0.16), uniform);
       arm.position.set(sx, 1.3, 0.18); arm.rotation.x = -0.9; g.add(arm);
+    }
+    if (this.elite) {
+      // Crimson pauldrons, a red glow and a taller frame so the Captain
+      // reads as the boss at a glance, even in the rain.
+      const crimson = new THREE.MeshStandardMaterial({ color: 0x8a1a1a, roughness: 0.6 });
+      for (const sx of [-0.4, 0.4]) {
+        const pad = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.16, 0.4), crimson);
+        pad.position.set(sx, 1.52, 0); g.add(pad);
+      }
+      const glow = new THREE.PointLight(0xff2222, 5, 7, 1.8);
+      glow.position.set(0, 1.6, 0); g.add(glow);
+      g.scale.setScalar(1.12);
     }
     g.position.copy(this.pos);
     g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.userData.sentry = this; } });
@@ -74,6 +90,13 @@ export class Sentry {
     this.muzzle = new THREE.Object3D();
     this.muzzle.position.set(0.32, 1.3, 0.85);
     g.add(this.muzzle);
+  }
+
+  // Waves call this: dormant sentries are invisible, silent and harmless
+  // until their wave opens.
+  setActive(v) {
+    this.active = v;
+    this.group.visible = v;
   }
 
   muzzleWorld(out) {
@@ -96,7 +119,7 @@ export class Sentry {
   }
 
   hearShot(fromPos, world) {
-    if (!this.alive) return;
+    if (!this.alive || !this.active) return;
     const d = Math.hypot(fromPos.x - this.pos.x, fromPos.z - this.pos.z);
     if (d < 42 && this.state === 'patrol') {
       this.state = 'suspicious';
@@ -107,10 +130,10 @@ export class Sentry {
   }
 
   update(dt, player, world) {
-    if (!this.alive) return;
+    if (!this.alive || !this.active) return;
     if (this.flashTimer > 0) {
       this.flashTimer -= dt;
-      if (this.flashTimer <= 0) this.visor.material.color.setHex(0xff5533);
+      if (this.flashTimer <= 0) this.visor.material.color.setHex(this.visorColor);
     }
     const px = player.pos.x, pz = player.pos.z;
     const dx = px - this.pos.x, dz = pz - this.pos.z;
@@ -141,13 +164,13 @@ export class Sentry {
       else if (dist < 10) move = -0.7;
       // Strafe to stay a moving target.
       const strafe = Math.sin(this.rngSeededTime * 0.9 + this.id * 2.1) * 0.8;
-      this.stepMove(dt, move, strafe, world, 3.4);
-      // Fire bursts.
+      this.stepMove(dt, move, strafe, world, this.elite ? 4.4 : 3.4);
+      // Fire bursts. The Captain reacts faster and fires longer bursts.
       this.shootTimer -= dt;
       if (this.shootTimer <= 0 && sees) {
-        this.burstLeft = 3;
+        this.burstLeft = this.elite ? 4 : 3;
         this.burstTimer = 0;
-        this.shootTimer = 0.9 + this.rng.next() * 0.7;
+        this.shootTimer = this.elite ? 0.55 + this.rng.next() * 0.45 : 0.9 + this.rng.next() * 0.7;
       }
       if (this.burstLeft > 0) {
         this.burstTimer -= dt;

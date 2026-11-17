@@ -25,6 +25,12 @@ const SENTRY_SPOTS = [
   [[-34, -10], [-30, 0], [-38, -20]],
 ];
 
+// Waves: 3 sentries, then 3, then 2 — the last of the final wave is the
+// elite Captain. Kills chained inside COMBO_WINDOW seconds multiply score.
+const WAVES = [[0, 1, 2], [3, 4, 5], [6, 7]];
+const CAPTAIN_ID = 7;
+const COMBO_WINDOW = 4;
+
 class Game {
   constructor() {
     this.canvas = document.getElementById('game');
@@ -54,6 +60,14 @@ class Game {
     this.shotsFired = 0;
     this.shotsHit = 0;
     this.damageFlash = 0;
+    this.waveIndex = 0;
+    this.waveState = 'fighting';
+    this.breatherTimer = 0;
+    this.combo = 0;
+    this.bestCombo = 0;
+    this.comboTimer = 0;
+    this.score = 0;
+    this.upgradeTaken = false;
     this.tracers = [];
     this.drops = [];
     this.raycaster = new THREE.Raycaster();
@@ -74,11 +88,12 @@ class Game {
     this.player.pos.set(SPAWN.x, 1.62, SPAWN.z);
     this.player.onReloaded = () => this.audio.reload();
     this.sentries = SENTRY_SPOTS.map((wps, i) =>
-      new Sentry(this.scene, new Rng(SEED * 100 + i + 7), i, wps.map(([x, z]) => ({ x, z }))));
+      new Sentry(this.scene, new Rng(SEED * 100 + i + 7), i, wps.map(([x, z]) => ({ x, z })), { elite: i === CAPTAIN_ID }));
     for (const s of this.sentries) {
       s.onShoot = (sentry) => this.sentryShoot(sentry);
       s.onAlerted = () => this.audio.alert();
     }
+    this.buildUpgradeCrate();
     // Tracer pool.
     for (let i = 0; i < 24; i++) {
       const geo = new THREE.BufferGeometry();
@@ -102,7 +117,16 @@ class Game {
     this.shotsFired = 0;
     this.shotsHit = 0;
     this.damageFlash = 0;
+    this.waveIndex = 0;
+    this.waveState = 'fighting';
+    this.breatherTimer = 0;
+    this.combo = 0;
+    this.bestCombo = 0;
+    this.comboTimer = 0;
+    this.score = 0;
+    this.upgradeTaken = false;
     this.player.hp = 100;
+    this.player.magSize = 30;
     this.player.mag = 30;
     this.player.reserve = 120;
     this.player.reloading = false;
@@ -111,16 +135,48 @@ class Game {
     // Remove old sentries and drops, rebuild fresh.
     for (const s of this.sentries) this.scene.remove(s.group);
     this.sentries = SENTRY_SPOTS.map((wps, i) =>
-      new Sentry(this.scene, new Rng(seed * 100 + i + 7), i, wps.map(([x, z]) => ({ x, z }))));
+      new Sentry(this.scene, new Rng(seed * 100 + i + 7), i, wps.map(([x, z]) => ({ x, z })), { elite: i === CAPTAIN_ID }));
     for (const s of this.sentries) {
       s.onShoot = (sen) => this.sentryShoot(sen);
       s.onAlerted = () => this.audio.alert();
     }
+    // Waves: only wave 1 is live at deploy; later waves stay dormant
+    // (invisible, silent) until the wave before them is cleared.
+    for (const s of this.sentries) s.setActive(false);
+    this.activateWave(0, true);
     for (const d of this.drops) this.scene.remove(d.mesh);
     this.drops = [];
     for (const m of this.world.medkits) { m.taken = false; m.group.visible = true; }
+    this.upgradeCrate.taken = false;
+    this.upgradeCrate.group.visible = true;
     this.world.nextBolt = 8;
     this.world.flash = 0;
+  }
+
+  // Open wave i: its sentries go live. The final wave is the boss moment.
+  activateWave(i, silent = false) {
+    this.waveIndex = i;
+    this.waveState = 'fighting';
+    for (const id of WAVES[i]) this.sentries[id].setActive(true);
+    if (silent) return;
+    if (i === 2) {
+      this.hud.bannerText('⚠ FINAL WAVE', 'Captain Voss is in the field — elite armour, fast reactions', 3.5);
+      this.hud.feedLine('⚠ ELITE SENTRY: CAPTAIN VOSS', '#e5484d');
+      this.audio.alert();
+    } else {
+      this.hud.bannerText(`WAVE ${i + 1}`, `${WAVES[i].length} more sentries are moving in`, 2.5);
+    }
+  }
+
+  // Screenshot staging helper: silently clear every wave before i and open it.
+  skipToWave(i) {
+    for (let w = 0; w < i; w++) {
+      for (const id of WAVES[w]) {
+        const s = this.sentries[id];
+        if (s.alive) { s.alive = false; s.state = 'dead'; s.group.visible = false; this.kills++; }
+      }
+    }
+    this.activateWave(i);
   }
 
   // ---------- flow ----------
@@ -131,7 +187,7 @@ class Game {
     this.hud.showPause(false);
     this.hud.setEndVisible(false);
     this.hud.showHud(true);
-    this.hud.bannerText('CLEAR THE OUTPOST', 'Eliminate all 8 sentries — watch the tower light', 3);
+    this.hud.bannerText('WAVE 1 — CLEAR THE OUTPOST', 'Three waves. Clear this one to call the next.', 3);
     if (!fromShot && !this.isTouch) this.lockPointer();
   }
 
@@ -140,7 +196,7 @@ class Game {
     if (document.pointerLockElement) document.exitPointerLock();
     this.hud.showHud(false);
     const acc = this.shotsFired ? Math.round((this.shotsHit / this.shotsFired) * 100) : 0;
-    this.hud.showEnd(win, { time: this.time, kills: this.kills, accuracy: acc, shots: this.shotsFired });
+    this.hud.showEnd(win, { time: this.time, kills: this.kills, accuracy: acc, shots: this.shotsFired, score: this.score, bestCombo: this.bestCombo });
     if (win) this.audio.win(); else this.audio.lose();
   }
 
@@ -302,7 +358,7 @@ class Game {
     this.scene.updateMatrixWorld(true);
     this.raycaster.set(this.camera.position, this.tmpV);
     this.raycaster.far = 120;
-    const groups = this.sentries.filter((s) => s.alive).map((s) => s.group);
+    const groups = this.sentries.filter((s) => s.alive && s.active).map((s) => s.group);
     const hits = this.raycaster.intersectObjects(groups, true);
     const muzzle = this.player.muzzleWorld(this.tmpV2.clone());
     let end = null;
@@ -319,7 +375,7 @@ class Game {
         this.hud.showHit(part === 'head');
         this.audio.hit(part === 'head');
         const killed = sentry.takeDamage(dmg, part);
-        if (killed) this.onSentryKilled(sentry);
+        if (killed) this.onSentryKilled(sentry, part);
       }
     }
     if (this.diagMode && this.shotLog.length < 40) {
@@ -389,14 +445,39 @@ class Game {
     }
   }
 
-  onSentryKilled(sentry) {
+  onSentryKilled(sentry, part) {
     this.kills++;
     this.audio.kill();
+    // Combo: kills chained within COMBO_WINDOW seconds multiply the score.
+    this.combo = this.comboTimer > 0 ? this.combo + 1 : 1;
+    this.comboTimer = COMBO_WINDOW;
+    if (this.combo > this.bestCombo) this.bestCombo = this.combo;
+    const base = 100 + (part === 'head' ? 50 : 0) + (sentry.elite ? 150 : 0);
+    const pts = Math.round(base * (1 + (this.combo - 1) * 0.5));
+    this.score += pts;
     const left = this.sentries.filter((s) => s.alive).length;
     this.hud.feedLine(`SENTRY DOWN — ${left} REMAIN`, '#7dc383');
+    if (sentry.elite) this.hud.feedLine(`CAPTAIN VOSS ELIMINATED — +${pts} PTS`, '#e8a33d');
+    else if (this.combo > 1) this.hud.feedLine(`x${this.combo} COMBO — +${pts} PTS`, '#e8a33d');
     // Ammo drop.
     if (Math.random() < 0.6) this.spawnDrop(sentry.pos.x, sentry.pos.z);
     if (left === 0) this.endMission(true);
+  }
+
+  // One gold weapon crate, mid-outpost on the dirt path: extended magazine.
+  buildUpgradeCrate() {
+    const g = new THREE.Group();
+    const box = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.5, 0.6),
+      new THREE.MeshStandardMaterial({ color: 0x8a6d2f, roughness: 0.55, metalness: 0.35 }));
+    box.position.y = 0.25; box.castShadow = true; g.add(box);
+    const strip = new THREE.Mesh(new THREE.BoxGeometry(0.87, 0.1, 0.62),
+      new THREE.MeshBasicMaterial({ color: 0xffc93a }));
+    strip.position.y = 0.5; g.add(strip);
+    const glow = new THREE.PointLight(0xffc27a, 6, 7, 1.8);
+    glow.position.y = 1.1; g.add(glow);
+    g.position.set(0, 0, -18);
+    this.scene.add(g);
+    this.upgradeCrate = { group: g, x: 0, z: -18, taken: false, bob: 0 };
   }
 
   spawnDrop(x, z) {
@@ -429,6 +510,23 @@ class Game {
     if (input.firing) this.tryFire();
     // Sentries.
     for (const s of this.sentries) s.update(dt, this.player, this.world);
+    // Combo decay.
+    if (this.comboTimer > 0) {
+      this.comboTimer -= dt;
+      if (this.comboTimer <= 0) this.combo = 0;
+    }
+    // Wave flow: clearing the live wave starts a breather, then the next wave.
+    if (this.state === 'playing' && this.waveState === 'breather') {
+      this.breatherTimer -= dt;
+      if (this.breatherTimer <= 0) this.activateWave(this.waveIndex + 1);
+    } else if (this.state === 'playing' && this.waveState === 'fighting') {
+      const activeLeft = this.sentries.filter((s) => s.active && s.alive).length;
+      if (activeLeft === 0 && this.sentries.some((s) => s.alive)) {
+        this.waveState = 'breather';
+        this.breatherTimer = 4;
+        this.hud.bannerText('WAVE CLEARED', `Wave ${this.waveIndex + 1} down — next wave incoming`, 3);
+      }
+    }
     // World ambience.
     this.world.update(dt, this.worldTime, this.player.pos);
     this.damageFlash = Math.max(0, this.damageFlash - dt * 2.2);
@@ -454,6 +552,21 @@ class Game {
         this.audio.pickup();
       }
     }
+    // Weapon-upgrade crate: extended magazine, 45 rounds.
+    const up = this.upgradeCrate;
+    if (!up.taken) {
+      up.bob += dt * 3;
+      up.group.position.y = Math.sin(up.bob) * 0.05;
+      if (Math.hypot(up.x - p.x, up.z - p.z) < 1.5) {
+        up.taken = true; up.group.visible = false;
+        this.player.magSize = 45;
+        this.player.mag = 45;
+        this.player.reserve += 60;
+        this.upgradeTaken = true;
+        this.hud.feedLine('⚡ EXTENDED MAGAZINE — 45 ROUNDS', '#e8a33d');
+        this.audio.pickup();
+      }
+    }
     // Tracers fade.
     for (const t of this.tracers) {
       if (t.life > 0) {
@@ -464,19 +577,22 @@ class Game {
     }
     // HUD.
     const nearest = this.nearestSentryInfo();
+    const captain = this.sentries[CAPTAIN_ID];
     this.hud.update({
       hp: this.player.hp, mag: this.player.mag, reserve: this.player.reserve,
       left: this.sentries.filter((s) => s.alive).length, kills: this.kills,
       time: this.time, yaw: this.player.yaw, spread: this.player.spread,
       ads: this.player.ads, dt, damageFlash: this.damageFlash,
       lightningFlash: this.world.flash, nearestBearing: nearest.bearing, nearestDist: nearest.dist,
+      combo: this.combo, score: this.score, wave: this.waveIndex + 1,
+      captainAlive: captain.active && captain.alive, upgraded: this.upgradeTaken,
     });
   }
 
   nearestSentryInfo() {
     let best = null, bd = Infinity;
     for (const s of this.sentries) {
-      if (!s.alive) continue;
+      if (!s.alive || !s.active) continue;
       const d = Math.hypot(s.pos.x - this.player.pos.x, s.pos.z - this.player.pos.z);
       if (d < bd) { bd = d; best = s; }
     }
@@ -534,7 +650,7 @@ class Game {
       this.hud.showStart(false);
       this.hud.showHud(false);
       const acc = this.shotsFired ? Math.round((this.shotsHit / this.shotsFired) * 100) : 0;
-      this.hud.showEnd(result === 'complete', { time: this.time, kills: this.kills, accuracy: acc, shots: this.shotsFired });
+      this.hud.showEnd(result === 'complete', { time: this.time, kills: this.kills, accuracy: acc, shots: this.shotsFired, score: this.score, bestCombo: this.bestCombo });
     }
     this.renderer.render(this.scene, this.camera);
     // Keep rendering on the normal animation loop (frozen frame): a single
@@ -547,8 +663,10 @@ class Game {
     if (params.get('diag')) {
       const diag = {
         state: this.state, kills: this.kills, shots: this.shotsFired, hits: this.shotsHit, time: this.time,
+        wave: this.waveIndex + 1, score: this.score, combo: this.combo, bestCombo: this.bestCombo,
+        upgradeTaken: this.upgradeTaken,
         player: { x: +this.player.pos.x.toFixed(1), z: +this.player.pos.z.toFixed(1), yaw: +this.player.yaw.toFixed(2), hp: this.player.hp },
-        sentries: this.sentries.map((s) => ({ alive: s.alive, hp: s.hp, x: +s.pos.x.toFixed(1), z: +s.pos.z.toFixed(1), state: s.state })),
+        sentries: this.sentries.map((s) => ({ alive: s.alive, active: s.active, elite: !!s.elite, hp: s.hp, x: +s.pos.x.toFixed(1), z: +s.pos.z.toFixed(1), state: s.state })),
       };
       // Brightness probe: sample the rendered framebuffer, and capture a
       // downscaled copy of the canvas itself.

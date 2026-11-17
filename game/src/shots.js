@@ -6,11 +6,21 @@ const STEP = 1 / 30;
 function nearestSentry(game) {
   let best = null, bd = Infinity;
   for (const s of game.sentries) {
-    if (!s.alive) continue;
+    if (!s.alive || !s.active) continue;
     const d = Math.hypot(s.pos.x - game.player.pos.x, s.pos.z - game.player.pos.z);
     if (d < bd) { bd = d; best = s; }
   }
   return { sentry: best, dist: bd };
+}
+
+// Point the camera at the nearest live sentry's chest and let the
+// viewmodel settle, so the frozen frame has a sentry in it.
+function aimAtNearest(game) {
+  const { sentry, dist } = nearestSentry(game);
+  if (!sentry) return;
+  game.player.yaw = angleTo(game, sentry.pos.x, sentry.pos.z);
+  game.player.pitch = Math.atan2(1.25 - 1.62, Math.max(4, dist));
+  game.player.update(0.016, { forward: 0, strafe: 0, sprint: false, firing: false }, game.world, game.time);
 }
 
 function angleTo(game, x, z) {
@@ -49,9 +59,11 @@ function autopilot(game, reckless, step, ctx) {
     && Math.abs(wantPitch - p.pitch) < 0.03;
   const los = !game.world.lineBlocked(p.pos.x, p.pos.z, sentry.pos.x, sentry.pos.z);
   const fireRange = reckless ? 26 : 30;
-  // Movement: close the distance first, then strafe while engaging.
+  // Movement: close the distance first, then strafe while engaging. With no
+  // line of sight, keep closing in instead of strafing behind cover — the
+  // strafe band behind a wall is a dead end the autopilot cannot shoot out of.
   const wantDist = reckless ? 12 : 19;
-  if (dist > wantDist + 2) { input.forward = 1; input.strafe = 0; }
+  if (dist > wantDist + 2 || !los) { input.forward = 1; input.strafe = 0; }
   else if (dist < wantDist - 4) input.forward = -0.6;
   else if (!reckless) input.strafe = Math.sin(step * 0.045) > 0 ? 0.7 : -0.7;
   if (!reckless && p.hp < 45) { input.forward = -1; input.strafe = 0; }
@@ -80,14 +92,29 @@ function autopilot(game, reckless, step, ctx) {
 export function stageShot(name, game) {
   game.reset(1);
   const ctx = { lastX: 0, lastZ: 0, stuck: 0, strafeTimer: 0, strafeDir: 1 };
-  if (name === 'play' || name === 'end') {
+  const idle = { forward: 0, strafe: 0, lookDx: 0, lookDy: 0, firing: false, reload: false, sprint: false };
+  if (name === 'play' || name === 'end' || name === 'win') {
     game.startMission(true);
     const reckless = name === 'end';
-    const maxSteps = (name === 'end' ? 420 : 26) * 30;
+    const maxSteps = (name === 'end' ? 420 : name === 'win' ? 600 : 60) * 30;
     let step = 0;
     while (step < maxSteps && game.state === 'playing') {
       game.step(STEP, autopilot(game, reckless, step, ctx));
       step++;
+      // Play shot: stop once a sentry is close AND in clear view — a
+      // sentry hidden behind a crate does not count as a gameplay shot.
+      if (name === 'play' && step > 10 * 30) {
+        const { sentry, dist } = nearestSentry(game);
+        if (sentry && dist < 18
+          && !game.world.lineBlocked(game.player.pos.x, game.player.pos.z, sentry.pos.x, sentry.pos.z)) break;
+      }
+    }
+    if (name === 'play' && game.state === 'playing') {
+      // Frame the nearest live sentry dead-centre for the screenshot.
+      aimAtNearest(game);
+      for (let i = 0; i < 12; i++) game.step(STEP, idle);
+      aimAtNearest(game);
+      for (let i = 0; i < 3; i++) game.step(STEP, idle);
     }
     // If the reckless run somehow survived, walk into the open and stand
     // still until the sentries finish it.
@@ -97,6 +124,39 @@ export function stageShot(name, game) {
         const input = { forward: 1, strafe: 0, lookDx: 0, lookDy: 0, firing: false, reload: false, sprint: false };
         game.step(STEP, input);
       }
+    }
+    return game.state;
+  }
+  if (name === 'captain') {
+    // Boss moment: jump straight to the final wave, stand the other
+    // final-wave sentry down, then close on the Captain without firing.
+    game.startMission(true);
+    game.skipToWave(2);
+    const other = game.sentries[6];
+    if (other.alive) { other.alive = false; other.state = 'dead'; other.group.visible = false; game.kills++; }
+    const captain = game.sentries[7];
+    // Deploy 13 m from the Captain, toward the outpost heart, so the boss
+    // fills the frame.
+    const dx = -captain.pos.x, dz = -captain.pos.z;
+    const len = Math.hypot(dx, dz) || 1;
+    game.player.pos.set(captain.pos.x + (dx / len) * 13, 1.62, captain.pos.z + (dz / len) * 13);
+    game.player.hp = 100;
+    let step = 0;
+    while (step < 8 * 30 && game.state === 'playing') {
+      const chase = autopilot(game, false, step, ctx);
+      chase.firing = false; // staging only: do not kill the boss before the shot
+      game.step(STEP, chase);
+      step++;
+      const { dist } = nearestSentry(game);
+      if (step > 3 * 30 && dist < 16) break;
+    }
+    if (game.state === 'playing') {
+      aimAtNearest(game);
+      for (let i = 0; i < 30; i++) game.step(STEP, idle);
+      aimAtNearest(game);
+      for (let i = 0; i < 30; i++) game.step(STEP, idle);
+      aimAtNearest(game);
+      game.hud.bannerText('⚠ CAPTAIN VOSS', 'Elite sentry — heavy armour, fast reactions', 5);
     }
     return game.state;
   }
